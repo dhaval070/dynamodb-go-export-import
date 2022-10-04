@@ -3,7 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
+	"log"
+
+	ddbclient "ddb-export/pkg/client"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -11,9 +15,9 @@ import (
 	ddbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-func CreateLocalClient() *dynamodb.Client {
+func createLocalClient() *dynamodb.Client {
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
-		config.WithRegion("eu-west-2"),
+		config.WithRegion("us-east-1"),
 		config.WithEndpointResolver(aws.EndpointResolverFunc(
 			func(service, region string) (aws.Endpoint, error) {
 				return aws.Endpoint{URL: "http://localhost:8000"}, nil
@@ -23,6 +27,17 @@ func CreateLocalClient() *dynamodb.Client {
 		panic(err)
 	}
 
+	return dynamodb.NewFromConfig(cfg)
+}
+
+func createStagingClient() *dynamodb.Client {
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion("eu-west-2"),
+		config.WithSharedConfigProfile("convrs"),
+	)
+	if err != nil {
+		panic(err)
+	}
 	return dynamodb.NewFromConfig(cfg)
 }
 
@@ -55,30 +70,50 @@ func convertAttrValue(value ddbtypes.AttributeValue) (rec map[string]any) {
 }
 
 func main() {
-	client := CreateLocalClient()
+	bStaging := flag.Bool("staging", false, "use staging remote db")
+	flag.Parse()
+	var client *dynamodb.Client
+	var table string
 
-	table := "convrsUsers"
+	log.Println(*bStaging)
 
-	opt := dynamodb.ScanInput{
-		TableName: &table,
+	if *bStaging {
+		client = ddbclient.CreateStagingClient()
+		table = "convrs-backend-staging-db-users"
+	} else {
+		table = "convrsUsers"
+		client = ddbclient.CreateLocalClient()
 	}
-	output, err := client.Scan(context.Background(), &opt)
 
-	if err != nil {
-		panic(err)
-	}
+	var startKey map[string]ddbtypes.AttributeValue
+	var result = []map[string]any{}
 
-	result := []map[string]any{}
-
-	for _, item := range output.Items {
-		fmt.Println("---------------------")
-		var v = map[string]any{}
-
-		for attr, value := range item {
-			v[attr] = convertAttrValue(value)
+	for {
+		opt := dynamodb.ScanInput{
+			TableName:         &table,
+			ExclusiveStartKey: startKey,
 		}
 
-		result = append(result, v)
+		output, err := client.Scan(context.Background(), &opt)
+
+		if err != nil {
+			panic(err)
+		}
+
+		for _, item := range output.Items {
+			var v = map[string]any{}
+
+			for attr, value := range item {
+				v[attr] = convertAttrValue(value)
+			}
+
+			result = append(result, v)
+		}
+
+		startKey = output.LastEvaluatedKey
+		if startKey == nil {
+			break
+		}
 	}
 
 	js, err := json.Marshal(result)

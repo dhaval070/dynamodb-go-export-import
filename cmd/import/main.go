@@ -4,32 +4,19 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
+	ddbclient "ddb-export/pkg/client"
+
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	ddbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
 var tableName = "convrsUsersNew"
-
-func CreateLocalClient() *dynamodb.Client {
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
-		config.WithRegion("us-east-1"),
-		config.WithEndpointResolver(aws.EndpointResolverFunc(
-			func(service, region string) (aws.Endpoint, error) {
-				return aws.Endpoint{URL: "http://localhost:8000"}, nil
-			})),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	return dynamodb.NewFromConfig(cfg)
-}
 
 func createTable(client *dynamodb.Client) {
 	var id = "id"
@@ -106,7 +93,18 @@ func importCsv(client *dynamodb.Client, fd io.Reader) {
 func main() {
 	dir, _ := os.Getwd()
 	fmt.Println(dir)
-	client := CreateLocalClient()
+
+	bStaging := flag.Bool("staging", false, "use staging remote db")
+	flag.Parse()
+	var client *dynamodb.Client
+
+	log.Println(*bStaging)
+
+	if *bStaging {
+		client = ddbclient.CreateStagingClient()
+	} else {
+		client = ddbclient.CreateLocalClient()
+	}
 
 	createTable(client)
 
