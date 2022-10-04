@@ -150,7 +150,6 @@ func importJson(client *dynamodb.Client, fd io.Reader) {
 		}
 
 		client.PutItem(context.Background(), opt)
-		break
 	}
 }
 
@@ -173,7 +172,7 @@ func main() {
 		client = ddbclient.CreateLocalClient()
 	}
 
-	createTable(client)
+	//createTable(client)
 
 	var filename = *sFilename
 
