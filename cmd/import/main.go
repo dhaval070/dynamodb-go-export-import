@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -62,18 +63,7 @@ func createTable(client *dynamodb.Client) {
 	fmt.Println(output)
 }
 
-func main() {
-	dir, _ := os.Getwd()
-	fmt.Println(dir)
-	client := CreateLocalClient()
-
-	createTable(client)
-
-	fd, err := os.Open("results.csv")
-	if err != nil {
-		panic(err)
-	}
-
+func importCsv(client *dynamodb.Client, fd io.Reader) {
 	reader := csv.NewReader(fd)
 
 	items, err := reader.ReadAll()
@@ -110,10 +100,20 @@ func main() {
 		}
 		fmt.Println(output)
 	}
-	js, err := json.Marshal(records)
+
+}
+
+func main() {
+	dir, _ := os.Getwd()
+	fmt.Println(dir)
+	client := CreateLocalClient()
+
+	createTable(client)
+
+	fd, err := os.Open("results.csv")
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println(string(js))
+	importCsv(client, fd)
 }
